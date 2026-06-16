@@ -676,11 +676,12 @@ const state = {
   debugVisible: false,
 };
 
-let jobsData   = [];
-let hairsData  = [];
-let itemsData  = [];
-let preloadSet = new Set();
-let cssLoaded  = false;
+let jobsData       = [];
+let hairsData      = [];
+let itemsData      = [];
+let genericItemIds = new Set();
+let preloadSet     = new Set();
+let cssLoaded      = false;
 
 // ================================================================
 // URL 生成ヘルパー
@@ -708,6 +709,9 @@ function hairUrl(action) {
 function equipUrl(action, itemId) {
   if (!itemId) return null;
   const folder = `${state.sex}${action}`;
+  if (genericItemIds.has(Number(itemId))) {
+    return imgUrl(folder, `Item${itemId}.${IMG_EXT}`);
+  }
   const suffix = state.riding ? state.riding : '';
   return imgUrl(folder, `Item${itemId}${state.jobId}${suffix}.${IMG_EXT}`);
 }
@@ -922,6 +926,21 @@ async function loadIdJson() {
     itemsData = [];
   }
   hideLoading();
+}
+
+// ================================================================
+// genericItems.json 読み込み
+// ジョブ別画像を持たず、共通画像のみのアイテムID一覧
+// ================================================================
+async function loadGenericItems() {
+  try {
+    const res  = await fetch(r2('genericItems.json'));
+    const data = await res.json();
+    genericItemIds = new Set(data);
+  } catch (e) {
+    console.warn('genericItems.json のロードに失敗:', e.message);
+    genericItemIds = new Set();
+  }
 }
 
 // ================================================================
@@ -1333,6 +1352,7 @@ function wireEvents() {
     }
     loadV4css();
     await loadIdJson();
+    await loadGenericItems();
     groupItems();
     buildJobSelect();
     buildHairSelect();
@@ -1395,6 +1415,7 @@ async function init() {
 
   // id.json 読み込み
   await loadIdJson();
+  await loadGenericItems();
   groupItems();
   buildJobSelect();
   buildHairSelect();
