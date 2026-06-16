@@ -1,0 +1,1423 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RO 衣装シミュレーター</title>
+
+<!--
+  ================================================================
+  RO 衣装シミュレーター
+  ================================================================
+  画像/CSS はすべて Cloudflare R2 から配信します。
+  R2_BASE_URL を自分のバケットURLに変更してください。
+
+  R2 バケットに必要なファイル:
+    /romaterial/v4.css
+    /romaterial/MaleWait/{JobName}.png  ... (各アクション×性別フォルダ)
+    /romaterial/MaleWalk/{JobName}.png
+    /romaterial/MaleSit/{JobName}.png
+    /romaterial/MaleStand/{JobName}.png
+    /romaterial/MaleTake/{JobName}.png
+    /romaterial/FemaleWait/{JobName}.png  ... 同上
+    /romaterial/{Sex}{Action}/Hair{N}{Color}.png
+    /romaterial/{Sex}{Action}/Item{itemId}{JobName}.png
+    /romaterial/id.json
+  ================================================================
+-->
+
+<style>
+/* ===== リセット ===== */
+*{box-sizing:border-box;margin:0;padding:0}
+
+/* ===== CSS変数(テーマ) ===== */
+:root{
+  --bg:#fdf5ec;
+  --panel:#fff8f0;
+  --panel2:#fff4e8;
+  --accent:#c8641c;
+  --accent2:#a04e10;
+  --text:#3e2010;
+  --text-dim:#9a7a58;
+  --border:#e2c9a8;
+  --input:#fffbf5;
+  --preview:#f0e8da;
+  --radius:8px;
+  --shadow:0 2px 12px rgba(100,60,20,.12);
+}
+
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Segoe UI','Hiragino Sans',system-ui,sans-serif;
+  font-size:13px;
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+
+/* ===== ヘッダー ===== */
+header{
+  background:var(--panel);
+  border-bottom:2px solid var(--accent);
+  padding:10px 20px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-shrink:0;
+  z-index:10;
+}
+.logo{
+  width:32px;height:32px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  border-radius:6px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;flex-shrink:0;
+}
+header h1{font-size:1rem;font-weight:700;color:var(--accent);letter-spacing:.05em}
+.header-badge{
+  margin-left:auto;
+  font-size:.65rem;color:var(--text-dim);
+  background:var(--input);
+  border:1px solid var(--border);
+  border-radius:4px;
+  padding:3px 8px;
+}
+
+/* ===== メインレイアウト ===== */
+.main{
+  display:flex;
+  flex:1;
+  overflow:hidden;
+  min-height:0;
+}
+
+/* ===== 左パネル ===== */
+.controls{
+  width:300px;
+  min-width:260px;
+  background:var(--panel);
+  border-right:1px solid var(--border);
+  overflow-y:auto;
+  padding:12px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  flex-shrink:0;
+}
+.controls::-webkit-scrollbar{width:5px}
+.controls::-webkit-scrollbar-track{background:transparent}
+.controls::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* ===== セクション ===== */
+.section{
+  background:var(--panel2);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:10px 12px;
+}
+.section-title{
+  font-size:.65rem;
+  font-weight:700;
+  color:var(--accent);
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  margin-bottom:8px;
+  padding-bottom:6px;
+  border-bottom:1px solid var(--border);
+}
+
+/* ===== フォームアイテム ===== */
+.row{
+  display:flex;
+  gap:6px;
+  align-items:center;
+  margin-bottom:7px;
+}
+.row:last-child{margin-bottom:0}
+.lbl{
+  font-size:.7rem;
+  color:var(--text-dim);
+  min-width:52px;
+  flex-shrink:0;
+}
+select,.txt-input{
+  flex:1;
+  background:var(--input);
+  border:1px solid var(--border);
+  border-radius:4px;
+  color:var(--text);
+  padding:4px 7px;
+  font-size:.75rem;
+  outline:none;
+  cursor:pointer;
+  min-width:0;
+}
+select:hover,.txt-input:hover{border-color:var(--accent2)}
+select:focus,.txt-input:focus{border-color:var(--accent)}
+input[type=range]{
+  flex:1;
+  accent-color:var(--accent);
+  cursor:pointer;
+}
+input[type=number]{
+  width:58px;flex:none;
+  background:var(--input);
+  border:1px solid var(--border);
+  border-radius:4px;
+  color:var(--text);
+  padding:4px 6px;
+  font-size:.75rem;
+  outline:none;
+}
+input[type=number]:focus{border-color:var(--accent)}
+
+/* ===== ラジオグループ ===== */
+.radio-group{display:flex;gap:3px;flex-wrap:wrap}
+.radio-btn{display:none}
+.radio-lbl{
+  padding:3px 9px;
+  background:var(--input);
+  border:1px solid var(--border);
+  border-radius:4px;
+  font-size:.7rem;
+  cursor:pointer;
+  color:var(--text-dim);
+  transition:all .12s;
+  user-select:none;
+}
+.radio-btn:checked+.radio-lbl{
+  background:var(--accent);
+  border-color:var(--accent);
+  color:#fff;
+  font-weight:700;
+}
+.radio-lbl:hover{border-color:var(--accent2);color:var(--text)}
+
+/* ===== 髪色スウォッチ ===== */
+.swatches{display:flex;gap:4px;flex-wrap:wrap;margin-top:2px}
+.swatch{
+  width:22px;height:22px;
+  border-radius:4px;
+  cursor:pointer;
+  border:2px solid transparent;
+  transition:all .12s;
+  flex-shrink:0;
+}
+.swatch.active{border-color:var(--accent);transform:scale(1.15)}
+.swatch:hover{transform:scale(1.1)}
+
+/* ===== ボタン ===== */
+.btn{
+  padding:5px 12px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:4px;
+  color:var(--text);
+  font-size:.72rem;
+  cursor:pointer;
+  transition:all .12s;
+  white-space:nowrap;
+}
+.btn:hover{background:var(--accent2);border-color:var(--accent);color:#fff}
+.btn.active{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.btn-row{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+
+/* ===== 検索ボックス ===== */
+.search-box{
+  display:flex;gap:4px;margin-bottom:6px;
+}
+.search-input{
+  flex:1;
+  background:var(--input);
+  border:1px solid var(--border);
+  border-radius:4px;
+  color:var(--text);
+  padding:4px 7px;
+  font-size:.72rem;
+  outline:none;
+}
+.search-input:focus{border-color:var(--accent)}
+
+/* ===== プレビューエリア ===== */
+.preview-area{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  background:var(--preview);
+  position:relative;
+  overflow:hidden;
+  min-width:0;
+}
+
+/* ===== キャラクタービューポート ===== */
+.char-viewport{
+  position:relative;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:grab;
+  user-select:none;
+}
+.char-viewport:active{cursor:grabbing}
+
+/* v4.css の .roMale/.roFemale 要素 */
+#char-el{
+  transform-origin:center center;
+  image-rendering:pixelated;
+  image-rendering:crisp-edges;
+}
+
+/* ===== フローティングコントロール ===== */
+.float-tl{
+  position:absolute;
+  top:12px;left:12px;
+  display:flex;flex-direction:column;gap:6px;
+}
+.float-tr{
+  position:absolute;
+  top:12px;right:12px;
+  display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;
+}
+.float-br{
+  position:absolute;
+  bottom:12px;right:12px;
+  display:flex;gap:5px;
+}
+.float-bl{
+  position:absolute;
+  bottom:12px;left:12px;
+  display:flex;gap:5px;align-items:center;
+}
+
+.info-badge{
+  background:rgba(255,250,244,.92);
+  border:1px solid var(--border);
+  border-radius:4px;
+  padding:4px 8px;
+  font-size:.65rem;
+  color:var(--text);
+  line-height:1.6;
+  backdrop-filter:blur(4px);
+  box-shadow:var(--shadow);
+}
+
+/* ===== 背景選択 ===== */
+.bg-dot{
+  width:20px;height:20px;
+  border-radius:50%;
+  border:2px solid transparent;
+  cursor:pointer;
+  transition:all .12s;
+}
+.bg-dot.active{border-color:var(--accent)}
+.bg-dot:hover{transform:scale(1.15)}
+
+/* ===== ローディング ===== */
+.loading{
+  position:absolute;
+  inset:0;
+  background:rgba(253,245,236,.82);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  font-size:.8rem;
+  color:var(--accent);
+  z-index:50;
+  backdrop-filter:blur(4px);
+}
+.loading.show{display:flex}
+.loading-inner{text-align:center;line-height:2}
+
+/* ===== デバッグパネル ===== */
+.debug-panel{
+  position:absolute;
+  bottom:44px;left:12px;
+  background:rgba(0,0,0,.8);
+  border:1px solid var(--border);
+  border-radius:4px;
+  padding:6px 10px;
+  font-size:.6rem;
+  color:#7cf;
+  line-height:1.8;
+  display:none;
+  max-width:360px;
+  word-break:break-all;
+  backdrop-filter:blur(4px);
+}
+.debug-panel.show{display:block}
+
+/* ===== ズーム表示 ===== */
+.zoom-label{font-size:.7rem;color:var(--text-dim);min-width:24px;text-align:center}
+
+/* ===== レスポンシブ ===== */
+@media(max-width:700px){
+  .main{flex-direction:column}
+  .controls{
+    width:100%;
+    max-height:45vh;
+    border-right:none;
+    border-bottom:1px solid var(--border);
+  }
+}
+
+/* ===== ステップ選択 (Stand用) ===== */
+.step-btns{display:flex;gap:3px;flex-wrap:wrap}
+.step-btn{
+  width:28px;height:24px;
+  background:var(--input);
+  border:1px solid var(--border);
+  border-radius:3px;
+  color:var(--text-dim);
+  font-size:.68rem;
+  cursor:pointer;
+  transition:all .1s;
+  display:flex;align-items:center;justify-content:center;
+}
+.step-btn.active{background:var(--accent);color:#1a0000;border-color:var(--accent);font-weight:700}
+.step-btn:hover{border-color:var(--accent2)}
+
+/* ===== 装備スロット ===== */
+.equip-slot-row{
+  display:flex;gap:4px;align-items:center;margin-bottom:6px;
+}
+.slot-badge{
+  font-size:.62rem;
+  background:var(--input);
+  border:1px solid var(--border);
+  border-radius:3px;
+  padding:2px 5px;
+  color:var(--text-dim);
+  min-width:32px;
+  text-align:center;
+  flex-shrink:0;
+}
+
+/* ===== カテゴリヘッド ===== */
+.cat-head{
+  font-size:.68rem;
+  color:var(--text-dim);
+  margin:6px 0 3px;
+  padding-left:2px;
+  border-left:2px solid var(--accent2);
+}
+</style>
+</head>
+<body>
+
+<!-- ヘッダー -->
+<header>
+  <div class="logo">⚔</div>
+  <h1>RO 衣装シミュレーター</h1>
+  <div class="header-badge">Cloudflare R2 連携</div>
+</header>
+
+<div class="main">
+
+  <!-- ===== 左パネル ===== -->
+  <div class="controls" id="controls">
+
+    <!-- キャラクター基本 -->
+    <div class="section">
+      <div class="section-title">キャラクター基本</div>
+      <div class="row">
+        <span class="lbl">性別</span>
+        <div class="radio-group" id="sex-group">
+          <input type="radio" name="sex" id="sex-m" value="Male" class="radio-btn" checked>
+          <label for="sex-m" class="radio-lbl">男</label>
+          <input type="radio" name="sex" id="sex-f" value="Female" class="radio-btn">
+          <label for="sex-f" class="radio-lbl">女</label>
+        </div>
+      </div>
+      <div class="row">
+        <span class="lbl">Job</span>
+        <select id="sel-job" title="Jobを選択"></select>
+      </div>
+      <div class="row">
+        <span class="lbl">カラー</span>
+        <select id="sel-color" title="ボディカラーを選択">
+          <option value="">デフォルト</option>
+          <option value="Color0">Color 0</option>
+          <option value="Color1">Color 1</option>
+          <option value="Color2">Color 2</option>
+          <option value="Color3">Color 3</option>
+          <option value="Color4">Color 4</option>
+          <option value="Color5">Color 5</option>
+          <option value="Color6">Color 6</option>
+          <option value="Color7">Color 7</option>
+        </select>
+      </div>
+      <div class="row">
+        <span class="lbl">乗り物</span>
+        <div class="radio-group" id="riding-group">
+          <input type="radio" name="riding" id="riding-none" value="" class="radio-btn" checked>
+          <label for="riding-none" class="radio-lbl">なし</label>
+          <input type="radio" name="riding" id="riding-yes" value="Riding" class="radio-btn">
+          <label for="riding-yes" class="radio-lbl">騎乗</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- モーション・向き -->
+    <div class="section">
+      <div class="section-title">モーション・向き</div>
+      <div class="row">
+        <span class="lbl">モーション</span>
+        <div class="radio-group" id="action-group">
+          <input type="radio" name="action" id="act-wait" value="Wait" class="radio-btn" checked>
+          <label for="act-wait" class="radio-lbl">待機</label>
+          <input type="radio" name="action" id="act-walk" value="Walk" class="radio-btn">
+          <label for="act-walk" class="radio-lbl">歩く</label>
+          <input type="radio" name="action" id="act-sit" value="Sit" class="radio-btn">
+          <label for="act-sit" class="radio-lbl">座る</label>
+          <input type="radio" name="action" id="act-stand" value="Stand" class="radio-btn">
+          <label for="act-stand" class="radio-lbl">立ち</label>
+          <input type="radio" name="action" id="act-take" value="Take" class="radio-btn">
+          <label for="act-take" class="radio-lbl">拾う</label>
+        </div>
+      </div>
+      <div class="row">
+        <span class="lbl">向き</span>
+        <div class="radio-group" id="dir-group"></div>
+      </div>
+      <!-- Stand 用コマ選択 -->
+      <div id="stand-row" class="row" style="display:none">
+        <span class="lbl">コマ</span>
+        <div class="step-btns" id="step-btns"></div>
+      </div>
+    </div>
+
+    <!-- 髪型 -->
+    <div class="section">
+      <div class="section-title">髪型・色</div>
+      <div class="row">
+        <span class="lbl">髪型</span>
+        <select id="sel-hair"></select>
+      </div>
+      <div class="row">
+        <span class="lbl">髪色</span>
+        <div class="swatches" id="hair-swatches"></div>
+      </div>
+    </div>
+
+    <!-- 装備 -->
+    <div class="section">
+      <div class="section-title">装備</div>
+
+      <div class="search-box">
+        <input type="text" class="search-input" id="item-search" placeholder="アイテムIDまたは名前で絞込み...">
+      </div>
+
+      <div class="equip-slot-row">
+        <span class="slot-badge" style="color:#e8a030">上段</span>
+        <select id="sel-upper" style="flex:1"></select>
+      </div>
+      <div class="equip-slot-row">
+        <span class="slot-badge" style="color:#60c0e0">中段</span>
+        <select id="sel-mid" style="flex:1"></select>
+      </div>
+      <div class="equip-slot-row">
+        <span class="slot-badge" style="color:#90d060">下段</span>
+        <select id="sel-lower" style="flex:1"></select>
+      </div>
+      <div class="equip-slot-row">
+        <span class="slot-badge" style="color:#c080e0">ローブ</span>
+        <select id="sel-robe" style="flex:1"></select>
+      </div>
+    </div>
+
+    <!-- 詳細設定 -->
+    <div class="section">
+      <div class="section-title">詳細設定</div>
+      <div class="row">
+        <span class="lbl">R2 URL</span>
+        <input type="text" class="txt-input" id="cfg-r2url" placeholder="https://xxx.r2.dev">
+      </div>
+      <div class="btn-row">
+        <button class="btn active" id="btn-apply">適用 &amp; 再読込</button>
+        <button class="btn" id="btn-debug">デバッグ</button>
+        <button class="btn" id="btn-preload">プリロード</button>
+      </div>
+    </div>
+
+  </div><!-- /controls -->
+
+  <!-- ===== プレビューエリア ===== -->
+  <div class="preview-area" id="preview-area">
+
+    <!-- 左上: ステータス表示 -->
+    <div class="float-tl">
+      <div class="info-badge" id="status-badge">
+        読み込み中...
+      </div>
+    </div>
+
+    <!-- 右上: アニメ制御 + ズーム -->
+    <div class="float-tr">
+      <button class="btn active" id="btn-anim">⏸ 停止</button>
+      <button class="btn" id="btn-step-fwd">→ コマ送り</button>
+      <div style="display:flex;align-items:center;gap:4px">
+        <button class="btn" id="btn-zoom-out">－</button>
+        <span class="zoom-label" id="zoom-label">2x</span>
+        <button class="btn" id="btn-zoom-in">＋</button>
+      </div>
+    </div>
+
+    <!-- キャラクター表示 -->
+    <div class="char-viewport" id="char-viewport">
+      <!--
+        v4.css の .roMale/.roFemale クラスが付くと
+        ::before 疑似要素でスプライトを描画する
+      -->
+      <div id="char-el"></div>
+    </div>
+
+    <!-- 左下: デバッグ -->
+    <div class="debug-panel" id="debug-panel"></div>
+
+    <!-- 右下: 背景選択 -->
+    <div class="float-br">
+      <div class="bg-dot active" data-bg="#f0e8da" style="background:#f0e8da" title="クリーム"></div>
+      <div class="bg-dot" data-bg="#e8d8c4" style="background:#e8d8c4" title="ベージュ"></div>
+      <div class="bg-dot" data-bg="#ddeedd" style="background:#ddeedd" title="ライトグリーン"></div>
+      <div class="bg-dot" data-bg="#dde8f4" style="background:#dde8f4" title="ライトブルー"></div>
+      <div class="bg-dot" data-bg="#c8c0b8" style="background:#c8c0b8" title="グレー"></div>
+      <div class="bg-dot" data-bg="#222" style="background:#222" title="黒"></div>
+      <div class="bg-dot" data-bg="checker" style="background:repeating-conic-gradient(#e8ddd0 0% 25%,#f5ede2 0% 50%) 0 0/12px 12px" title="チェッカー"></div>
+    </div>
+
+    <!-- ローディング -->
+    <div class="loading" id="loading">
+      <div class="loading-inner">
+        <div id="loading-msg">準備中...</div>
+        <div id="loading-prog" style="color:var(--text-dim);font-size:.7rem"></div>
+      </div>
+    </div>
+
+  </div><!-- /preview-area -->
+
+</div><!-- /main -->
+
+<script>
+'use strict';
+
+// ================================================================
+// R2_BASE_URL — バケット URL をここに設定（末尾スラッシュなし）
+// imgExt     — 'png' または 'webp'（compress.py で変換後は 'webp' に変更）
+// ================================================================
+const R2_BASE_URL_DEFAULT = 'https://pub-eb8f816e7731447293991c82cf24c244.r2.dev';
+const IMG_EXT = 'webp';
+
+// ================================================================
+// アクション定義
+// ================================================================
+const ACTIONS = {
+  Wait:  { steps: 6,  animated: true  },
+  Walk:  { steps: 8,  animated: true  },
+  Sit:   { steps: 8,  animated: false },
+  Stand: { steps: 8,  animated: false },
+  Take:  { steps: 3,  animated: true  },
+};
+
+// ================================================================
+// 向き定義
+// ================================================================
+const DIRS = [
+  { cls: '',            label: '南'  , short:'S'  },
+  { cls: 'roSouthWest', label: '南西', short:'SW' },
+  { cls: 'roWest',      label: '西'  , short:'W'  },
+  { cls: 'roNorthWest', label: '北西', short:'NW' },
+  { cls: 'roNorth',     label: '北'  , short:'N'  },
+  { cls: 'roNorthEast', label: '北東', short:'NE' },
+  { cls: 'roEast',      label: '東'  , short:'E'  },
+  { cls: 'roSouthEast', label: '南東', short:'SE' },
+];
+
+// ================================================================
+// 髪色定義
+// ================================================================
+const HAIR_COLORS = [
+  { suffix: 'Normal', hex: '#c8a45a', label: 'ノーマル' },
+  { suffix: 'Black',  hex: '#1a1a1a', label: 'ブラック' },
+  { suffix: 'Blue',   hex: '#4a7acc', label: 'ブルー'   },
+  { suffix: 'Green',  hex: '#4aaa5a', label: 'グリーン'  },
+  { suffix: 'Orange', hex: '#e07030', label: 'オレンジ'  },
+  { suffix: 'Purple', hex: '#9040cc', label: 'パープル'  },
+  { suffix: 'Red',    hex: '#cc3030', label: 'レッド'    },
+  { suffix: 'White',  hex: '#e8e0d0', label: 'ホワイト'  },
+  { suffix: 'Yellow', hex: '#e0d030', label: 'イエロー'  },
+  { suffix: '',       hex: '#885830', label: 'デフォルト' },
+];
+
+// ================================================================
+// アプリケーション状態
+// ================================================================
+const state = {
+  r2url: R2_BASE_URL_DEFAULT,
+  sex: 'Male',
+  jobId: 'Novice',
+  jobCls: 'roNovice',
+  color: '',
+  riding: '',
+  action: 'Wait',
+  dir: 0,
+  step: 0,
+  hairId: 'Hair1',
+  hairColor: 'Normal',
+  upper: 0,
+  mid: 0,
+  lower: 0,
+  robe: 0,
+  zoom: 2,
+  animating: false,   // v4.css が CSS アニメーションを制御するので JS は不要
+  debugVisible: false,
+};
+
+let jobsData   = [];
+let hairsData  = [];
+let itemsData  = [];
+let preloadSet = new Set();
+let cssLoaded  = false;
+
+// ================================================================
+// URL 生成ヘルパー
+// ================================================================
+function r2(path) {
+  return `${state.r2url}/romaterial/${path}`;
+}
+
+function imgUrl(folder, filename) {
+  return `url('${r2(`${folder}/${filename}`)}')`;
+}
+
+function bodyUrl(action) {
+  const folder = `${state.sex}${action}`;
+  const suffix = state.riding ? state.riding : '';
+  const color  = state.color  ? state.color  : '';
+  return imgUrl(folder, `${state.jobId}${suffix}${color}.${IMG_EXT}`);
+}
+
+function hairUrl(action) {
+  const folder = `${state.sex}${action}`;
+  return imgUrl(folder, `${state.hairId}${state.hairColor}.${IMG_EXT}`);
+}
+
+function equipUrl(action, itemId) {
+  if (!itemId) return null;
+  const folder = `${state.sex}${action}`;
+  const suffix = state.riding ? state.riding : '';
+  return imgUrl(folder, `Item${itemId}${state.jobId}${suffix}.${IMG_EXT}`);
+}
+
+// ================================================================
+// CSS変数セッター
+// ================================================================
+const charEl = () => document.getElementById('char-el');
+
+function setCssVar(name, val) {
+  if (val) {
+    charEl().style.setProperty(name, val);
+  } else {
+    charEl().style.removeProperty(name);
+  }
+}
+
+// 全アクション × 全レイヤーの CSS 変数を一括更新
+function updateCssVars() {
+  const el = charEl();
+  if (!el) return;
+
+  const capSex = state.sex; // 'Male' or 'Female'
+
+  Object.keys(ACTIONS).forEach(action => {
+    const a = action; // 'Wait', 'Walk', ...
+
+    // ボディ
+    setCssVar(`--roBody${a}${capSex}`, bodyUrl(a));
+    // 髪
+    setCssVar(`--roHair${a}${capSex}`, hairUrl(a));
+    // ウィッグ (未設定なら none)
+    el.style.removeProperty(`--roWig${a}${capSex}`);
+    // 装備
+    setCssVar(`--roUpper${a}${capSex}`, equipUrl(a, state.upper) );
+    setCssVar(`--roMid${a}${capSex}`,   equipUrl(a, state.mid)   );
+    setCssVar(`--roLower${a}${capSex}`, equipUrl(a, state.lower) );
+    setCssVar(`--roRobe${a}${capSex}`,  equipUrl(a, state.robe)  );
+  });
+}
+
+// ================================================================
+// CSSクラス更新
+// ================================================================
+function updateClasses() {
+  const el = charEl();
+  if (!el) return;
+
+  // 全クラスをリセット (id は保持)
+  el.className = '';
+
+  const classes = [
+    state.sex === 'Male' ? 'roMale' : 'roFemale',
+    `ro${state.action}`,
+    state.jobCls,
+  ];
+
+  // 向き
+  const dirCls = DIRS[state.dir].cls;
+  if (dirCls) classes.push(dirCls);
+
+  // Stand コマ
+  if (state.action === 'Stand') {
+    classes.push(`roStep${state.step}`);
+  }
+
+  // 乗り物 (騎乗クラスは v4.css に .roRiding がある)
+  if (state.riding) classes.push('roRiding');
+
+  el.className = classes.join(' ');
+}
+
+// ================================================================
+// 全更新
+// ================================================================
+function updateCharacter() {
+  updateCssVars();
+  updateClasses();
+  updateStatusBadge();
+  if (state.debugVisible) updateDebug();
+}
+
+// ================================================================
+// ステータス表示
+// ================================================================
+function updateStatusBadge() {
+  const dir = DIRS[state.dir];
+  const act = ACTIONS[state.action];
+  const animStr = act.animated ? (state.animating ? 'アニメ中' : '停止') : 'アニメなし';
+  document.getElementById('status-badge').innerHTML =
+    `Job: <b style="color:var(--accent)">${state.jobId}</b> | ${state.sex}<br>` +
+    `モーション: ${state.action} | 向き: ${dir.label}<br>` +
+    `髪: ${state.hairId} ${state.hairColor} | ${animStr}`;
+}
+
+// ================================================================
+// デバッグパネル
+// ================================================================
+function updateDebug() {
+  const panel = document.getElementById('debug-panel');
+  const a = state.action;
+  const s = state.sex;
+  panel.innerHTML = [
+    `<b>R2 Base:</b> ${state.r2url}`,
+    `<b>--roBody${a}${s}:</b> ${bodyUrl(a)}`,
+    `<b>--roHair${a}${s}:</b> ${hairUrl(a)}`,
+    state.upper ? `<b>--roUpper${a}${s}:</b> ${equipUrl(a, state.upper)}` : '',
+    state.mid   ? `<b>--roMid${a}${s}:</b> ${equipUrl(a, state.mid)}`   : '',
+    state.lower ? `<b>--roLower${a}${s}:</b> ${equipUrl(a, state.lower)}` : '',
+    state.robe  ? `<b>--roRobe${a}${s}:</b> ${equipUrl(a, state.robe)}`  : '',
+    `<b>classes:</b> ${charEl().className}`,
+  ].filter(Boolean).join('<br>');
+}
+
+// ================================================================
+// v4.css を R2 からロード
+// ================================================================
+function loadV4css() {
+  const existing = document.getElementById('v4css-link');
+  if (existing) existing.remove();
+
+  const link = document.createElement('link');
+  link.id   = 'v4css-link';
+  link.rel  = 'stylesheet';
+  link.href = r2('v4.css');
+  link.onload  = () => { cssLoaded = true; updateCharacter(); };
+  link.onerror = () => {
+    console.warn('v4.css のロードに失敗しました。ローカルフォールバックを使用します。');
+    injectFallbackCss();
+    cssLoaded = true;
+    updateCharacter();
+  };
+  document.head.appendChild(link);
+}
+
+// ローカル開発用フォールバック CSS (R2 未設定時)
+function injectFallbackCss() {
+  const style = document.getElementById('fallback-v4');
+  if (style) return;
+  const el = document.createElement('style');
+  el.id = 'fallback-v4';
+  el.textContent = `
+    @keyframes roAnimation{to{background-position-x:calc(-100% * var(--roSteps))}}
+    @keyframes roBodyAnimation3{33.33%{translate:var(--roOffset1,var(--roOffset0))}66.67%{translate:var(--roOffset2,var(--roOffset0))}}
+    @keyframes roBodyAnimation6{16.67%{translate:var(--roOffset1,var(--roOffset0))}33.33%{translate:var(--roOffset2,var(--roOffset0))}50.00%{translate:var(--roOffset3,var(--roOffset0))}66.67%{translate:var(--roOffset4,var(--roOffset0))}83.33%{translate:var(--roOffset5,var(--roOffset0))}}
+    @keyframes roBodyAnimation8{12.50%{translate:var(--roOffset1,var(--roOffset0))}25.00%{translate:var(--roOffset2,var(--roOffset0))}37.50%{translate:var(--roOffset3,var(--roOffset0))}50.00%{translate:var(--roOffset4,var(--roOffset0))}62.50%{translate:var(--roOffset5,var(--roOffset0))}75.00%{translate:var(--roOffset6,var(--roOffset0))}87.50%{translate:var(--roOffset7,var(--roOffset0))}}
+    .roMale,.roFemale{width:256px;height:256px;display:grid;justify-content:center;align-content:center}
+    .roMale::before,.roFemale::before{content:'';display:block;width:256px;height:256px;translate:var(--roOffset,var(--roOffset0));background-image:var(--roBackgroundImage);background-position:calc(-100% * var(--roStep,0)) calc(-100% * (var(--roPositionBody,0) * 3 + var(--roPositionHead,0)));animation:calc(60ms * var(--roSteps)) steps(var(--roSteps)) infinite;animation-name:var(--roAnimationDisabled,var(--roAnimation,none),var(--roBodyAnimation,none))}
+    .roStand{--roSteps:8}
+    .roWalk{--roSteps:8;--roAnimation:roAnimation;--roBodyAnimation:roBodyAnimation8}
+    .roSit{--roSteps:8}
+    .roTake{--roSteps:3;--roAnimation:roAnimation;--roBodyAnimation:roBodyAnimation3}
+    .roWait{--roSteps:6;--roAnimation:roAnimation;--roBodyAnimation:roBodyAnimation6}
+    .roSouthWest{--roPositionBody:1}
+    .roWest{--roPositionBody:2}
+    .roNorthWest{--roPositionBody:3}
+    .roNorth{--roPositionBody:4}
+    .roNorthEast{--roPositionBody:5}
+    .roEast{--roPositionBody:6}
+    .roSouthEast{--roPositionBody:7}
+    .roRight{--roPositionHead:1}
+    .roLeft{--roPositionHead:2}
+    .roStep0,.roStep1,.roStep2,.roStep3,.roStep4,.roStep5,.roStep6,.roStep7{--roAnimationDisabled:none}
+    .roStep0{--roStep:0;--roOffset:var(--roOffset0)}
+    .roStep1{--roStep:1;--roOffset:var(--roOffset1,var(--roOffset0))}
+    .roStep2{--roStep:2;--roOffset:var(--roOffset2,var(--roOffset0))}
+    .roStep3:not(.roTake){--roStep:3;--roOffset:var(--roOffset3,var(--roOffset0))}
+    .roStep4:not(.roTake){--roStep:4;--roOffset:var(--roOffset4,var(--roOffset0))}
+    .roStep5:not(.roTake){--roStep:5;--roOffset:var(--roOffset5,var(--roOffset0))}
+    .roStep6:not(.roTake):not(.roWait){--roStep:6;--roOffset:var(--roOffset6,var(--roOffset0))}
+    .roStep7:not(.roTake):not(.roWait){--roStep:7;--roOffset:var(--roOffset7,var(--roOffset0))}
+    .roStand.roMale{--roBackgroundImage:var(--roUpperStandMale,none),var(--roMidStandMale,none),var(--roLowerStandMale,none),var(--roWigStandMale,none),var(--roHairStandMale,none),var(--roBodyStandMale,none),var(--roRobeStandMale,none)}
+    .roStand.roFemale{--roBackgroundImage:var(--roUpperStandFemale,none),var(--roMidStandFemale,none),var(--roLowerStandFemale,none),var(--roWigStandFemale,none),var(--roHairStandFemale,none),var(--roBodyStandFemale,none),var(--roRobeStandFemale,none)}
+    .roWalk.roMale{--roBackgroundImage:var(--roUpperWalkMale,none),var(--roMidWalkMale,none),var(--roLowerWalkMale,none),var(--roWigWalkMale,none),var(--roHairWalkMale,none),var(--roBodyWalkMale,none),var(--roRobeWalkMale,none)}
+    .roWalk.roFemale{--roBackgroundImage:var(--roUpperWalkFemale,none),var(--roMidWalkFemale,none),var(--roLowerWalkFemale,none),var(--roWigWalkFemale,none),var(--roHairWalkFemale,none),var(--roBodyWalkFemale,none),var(--roRobeWalkFemale,none)}
+    .roSit.roMale{--roBackgroundImage:var(--roUpperSitMale,none),var(--roMidSitMale,none),var(--roLowerSitMale,none),var(--roWigSitMale,none),var(--roHairSitMale,none),var(--roBodySitMale,none),var(--roRobeSitMale,none)}
+    .roSit.roFemale{--roBackgroundImage:var(--roUpperSitFemale,none),var(--roMidSitFemale,none),var(--roLowerSitFemale,none),var(--roWigSitFemale,none),var(--roHairSitFemale,none),var(--roBodySitFemale,none),var(--roRobeSitFemale,none)}
+    .roTake.roMale{--roBackgroundImage:var(--roUpperTakeMale,none),var(--roMidTakeMale,none),var(--roLowerTakeMale,none),var(--roWigTakeMale,none),var(--roHairTakeMale,none),var(--roBodyTakeMale,none),var(--roRobeTakeMale,none)}
+    .roTake.roFemale{--roBackgroundImage:var(--roUpperTakeFemale,none),var(--roMidTakeFemale,none),var(--roLowerTakeFemale,none),var(--roWigTakeFemale,none),var(--roHairTakeFemale,none),var(--roBodyTakeFemale,none),var(--roRobeTakeFemale,none)}
+    .roWait.roMale{--roBackgroundImage:var(--roUpperWaitMale,none),var(--roMidWaitMale,none),var(--roLowerWaitMale,none),var(--roWigWaitMale,none),var(--roHairWaitMale,none),var(--roBodyWaitMale,none),var(--roRobeWaitMale,none)}
+    .roWait.roFemale{--roBackgroundImage:var(--roUpperWaitFemale,none),var(--roMidWaitFemale,none),var(--roLowerWaitFemale,none),var(--roWigWaitFemale,none),var(--roHairWaitFemale,none),var(--roBodyWaitFemale,none),var(--roRobeWaitFemale,none)}
+    /* 方向別レイヤー順 (ローブを前面に) */
+    .roStand.roMale:is(.roWest,.roNorthWest,.roNorth,.roNorthEast,.roEast){--roBackgroundImage:var(--roRobeStandMale,none),var(--roUpperStandMale,none),var(--roMidStandMale,none),var(--roLowerStandMale,none),var(--roWigStandMale,none),var(--roHairStandMale,none),var(--roBodyStandMale,none)}
+    .roStand.roFemale:is(.roWest,.roNorthWest,.roNorth,.roNorthEast,.roEast){--roBackgroundImage:var(--roRobeStandFemale,none),var(--roUpperStandFemale,none),var(--roMidStandFemale,none),var(--roLowerStandFemale,none),var(--roWigStandFemale,none),var(--roHairStandFemale,none),var(--roBodyStandFemale,none)}
+    .roWalk.roMale:is(.roWest,.roNorthWest,.roNorth,.roNorthEast,.roEast){--roBackgroundImage:var(--roRobeWalkMale,none),var(--roUpperWalkMale,none),var(--roMidWalkMale,none),var(--roLowerWalkMale,none),var(--roWigWalkMale,none),var(--roHairWalkMale,none),var(--roBodyWalkMale,none)}
+    .roWalk.roFemale:is(.roWest,.roNorthWest,.roNorth,.roNorthEast,.roEast){--roBackgroundImage:var(--roRobeWalkFemale,none),var(--roUpperWalkFemale,none),var(--roMidWalkFemale,none),var(--roLowerWalkFemale,none),var(--roWigWalkFemale,none),var(--roHairWalkFemale,none),var(--roBodyWalkFemale,none)}
+    .roSit.roMale:is(.roWest,.roNorthWest,.roNorth,.roNorthEast,.roEast){--roBackgroundImage:var(--roRobeSitMale,none),var(--roUpperSitMale,none),var(--roMidSitMale,none),var(--roLowerSitMale,none),var(--roWigSitMale,none),var(--roHairSitMale,none),var(--roBodySitMale,none)}
+    .roSit.roFemale:is(.roWest,.roNorthWest,.roNorth,.roNorthEast,.roEast){--roBackgroundImage:var(--roRobeSitFemale,none),var(--roUpperSitFemale,none),var(--roMidSitFemale,none),var(--roLowerSitFemale,none),var(--roWigSitFemale,none),var(--roHairSitFemale,none),var(--roBodySitFemale,none)}
+    .roTake.roMale:is(.roWest,.roNorthWest,.roNorth,.roNorthEast,.roEast){--roBackgroundImage:var(--roRobeTakeMale,none),var(--roUpperTakeMale,none),var(--roMidTakeMale,none),var(--roLowerTakeMale,none),var(--roWigTakeMale,none),var(--roHairTakeMale,none),var(--roBodyTakeMale,none)}
+    .roTake.roFemale:is(.roWest,.roNorthWest,.roNorth,.roNorthEast,.roEast){--roBackgroundImage:var(--roRobeTakeFemale,none),var(--roUpperTakeFemale,none),var(--roMidTakeFemale,none),var(--roLowerTakeFemale,none),var(--roWigTakeFemale,none),var(--roHairTakeFemale,none),var(--roBodyTakeFemale,none)}
+    .roWait.roMale:is(.roWest,.roNorthWest,.roNorth,.roNorthEast,.roEast){--roBackgroundImage:var(--roRobeWaitMale,none),var(--roUpperWaitMale,none),var(--roMidWaitMale,none),var(--roLowerWaitMale,none),var(--roWigWaitMale,none),var(--roHairWaitMale,none),var(--roBodyWaitMale,none)}
+    .roWait.roFemale:is(.roWest,.roNorthWest,.roNorth,.roNorthEast,.roEast){--roBackgroundImage:var(--roRobeWaitFemale,none),var(--roUpperWaitFemale,none),var(--roMidWaitFemale,none),var(--roLowerWaitFemale,none),var(--roWigWaitFemale,none),var(--roHairWaitFemale,none),var(--roBodyWaitFemale,none)}
+  `;
+  document.head.appendChild(el);
+}
+
+// ================================================================
+// id.json 読み込み
+// ================================================================
+async function loadIdJson() {
+  showLoading('id.json を読み込み中...');
+  try {
+    const res  = await fetch(r2('id.json'));
+    const data = await res.json();
+    jobsData  = data.jobs  || [];
+    hairsData = data.hairs || [];
+    itemsData = data.items || [];
+  } catch (e) {
+    console.warn('id.json のロードに失敗。フォールバックデータを使用:', e.message);
+    jobsData  = FALLBACK_JOBS;
+    hairsData = FALLBACK_HAIRS;
+    itemsData = [];
+  }
+  hideLoading();
+}
+
+// ================================================================
+// フォールバックデータ (R2 未設定 / ネットワーク障害時)
+// ================================================================
+const FALLBACK_JOBS = [
+  {id:'Novice',        name:'ノービス',          category:'NoviceCategory'},
+  {id:'Swordman',      name:'ソードマン',         category:'SwordmanCategory'},
+  {id:'Magician',      name:'マジシャン',          category:'MagicianCategory'},
+  {id:'Archer',        name:'アーチャー',          category:'ArcherCategory'},
+  {id:'Acolyte',       name:'アコライト',          category:'AcolyteCategory'},
+  {id:'Merchant',      name:'マーチャント',         category:'MerchantCategory'},
+  {id:'Thief',         name:'シーフ',             category:'ThiefCategory'},
+  {id:'Knight',        name:'ナイト',             category:'SwordmanCategory'},
+  {id:'Priest',        name:'プリースト',          category:'AcolyteCategory'},
+  {id:'Wizard',        name:'ウィザード',          category:'MagicianCategory'},
+  {id:'Blacksmith',    name:'ブラックスミス',       category:'MerchantCategory'},
+  {id:'Hunter',        name:'ハンター',            category:'ArcherCategory'},
+  {id:'Assassin',      name:'アサシン',            category:'ThiefCategory'},
+  {id:'Crusader',      name:'クルセイダー',         category:'SwordmanCategory'},
+  {id:'Monk',          name:'モンク',             category:'AcolyteCategory'},
+  {id:'Sage',          name:'セージ',             category:'MagicianCategory'},
+  {id:'Rogue',         name:'ローグ',             category:'ThiefCategory'},
+  {id:'Alchemist',     name:'アルケミスト',         category:'MerchantCategory'},
+  {id:'Bard',          name:'バード',             category:'ArcherCategory'},
+  {id:'LordKnight',    name:'ロードナイト',         category:'SwordmanCategory'},
+  {id:'HighPriest',    name:'ハイプリースト',       category:'AcolyteCategory'},
+  {id:'HighWizard',    name:'ハイウィザード',       category:'MagicianCategory'},
+  {id:'WhiteSmith',    name:'ホワイトスミス',       category:'MerchantCategory'},
+  {id:'Sniper',        name:'スナイパー',          category:'ArcherCategory'},
+  {id:'AssassinCross', name:'アサシンクロス',       category:'ThiefCategory'},
+  {id:'Paladin',       name:'パラディン',          category:'SwordmanCategory'},
+  {id:'Champion',      name:'チャンピオン',         category:'AcolyteCategory'},
+  {id:'Professor',     name:'プロフェッサー',       category:'MagicianCategory'},
+  {id:'Creator',       name:'クリエイター',         category:'MerchantCategory'},
+  {id:'Clown',         name:'クラウン',            category:'ArcherCategory'},
+  {id:'GuillotineCross',name:'ギロチンクロス',      category:'ThiefCategory'},
+  {id:'RuneKnight',    name:'ルーンナイト',         category:'SwordmanCategory'},
+  {id:'Archbishop',    name:'アークビショップ',      category:'AcolyteCategory'},
+  {id:'Warlock',       name:'ウォーロック',         category:'MagicianCategory'},
+  {id:'Mechanic',      name:'メカニック',          category:'MerchantCategory'},
+  {id:'Ranger',        name:'レンジャー',          category:'ArcherCategory'},
+  {id:'ShadowChaser',  name:'シャドウチェイサー',    category:'ThiefCategory'},
+  {id:'RoyalGuard',    name:'ロイヤルガード',       category:'SwordmanCategory'},
+  {id:'Sura',          name:'スラ',              category:'AcolyteCategory'},
+  {id:'Sorcerer',      name:'ソーサラー',          category:'MagicianCategory'},
+  {id:'Genetic',       name:'ジェネティック',       category:'MerchantCategory'},
+  {id:'Minstrel',      name:'ミンストレル',         category:'ArcherCategory'},
+  {id:'AbyssChaser',   name:'アビスチェイサー',      category:'ThiefCategory'},
+  {id:'DragonKight',   name:'ドラゴンナイト',       category:'SwordmanCategory'},
+  {id:'Inquisitor',    name:'インクィジター',       category:'AcolyteCategory'},
+  {id:'ArchMage',      name:'アーチメイジ',         category:'MagicianCategory'},
+  {id:'Biolo',         name:'ビオロ',             category:'MerchantCategory'},
+  {id:'WindHawk',      name:'ウィンドホーク',       category:'ArcherCategory'},
+  {id:'ShadowCross',   name:'シャドウクロス',       category:'ThiefCategory'},
+  {id:'ImperialGuard', name:'インペリアルガード',    category:'SwordmanCategory'},
+  {id:'Cardinal',      name:'カーディナル',         category:'AcolyteCategory'},
+  {id:'ElementalMaster',name:'エレメンタルマスター', category:'MagicianCategory'},
+  {id:'SuperNovice',   name:'スーパーノービス',      category:'NoviceCategory'},
+  {id:'HyperNovice',   name:'ハイパーノービス',      category:'NoviceCategory'},
+  {id:'Summoner',      name:'サモナー',            category:'DoramCategory'},
+  {id:'SpiritHandler', name:'スピリットハンドラー',  category:'DoramCategory'},
+  {id:'Gunslinger',    name:'ガンスリンガー',       category:'ExtCategory'},
+  {id:'Ninja',         name:'ニンジャ',            category:'ExtCategory'},
+  {id:'TaekwonKid',    name:'テコンキッズ',         category:'ExtCategory'},
+  {id:'Rebellion',     name:'リベリオン',          category:'ExtCategory'},
+  {id:'Kagerou',       name:'カゲロウ',            category:'ExtCategory'},
+  {id:'Oboro',         name:'オボロ',             category:'ExtCategory'},
+  {id:'NightWatch',    name:'ナイトウォッチ',       category:'ExtCategory'},
+];
+
+const FALLBACK_HAIRS = Array.from({length:42}, (_,i) => ({id:`Hair${i+1}`, name:`Hair${i+1}`}));
+
+// ================================================================
+// UI 構築
+// ================================================================
+function buildJobSelect() {
+  const sel = document.getElementById('sel-job');
+  sel.innerHTML = '';
+
+  // カテゴリ別グループ化
+  const cats = {};
+  jobsData.forEach(j => {
+    const cat = j.category || 'その他';
+    if (!cats[cat]) cats[cat] = [];
+    cats[cat].push(j);
+  });
+
+  Object.entries(cats).forEach(([cat, jobs]) => {
+    const grp = document.createElement('optgroup');
+    grp.label = cat.replace('Category','');
+    jobs.forEach(j => {
+      const opt = document.createElement('option');
+      opt.value = j.id;
+      opt.textContent = j.name && !j.name.includes('?') ? `${j.name} (${j.id})` : j.id;
+      grp.appendChild(opt);
+    });
+    sel.appendChild(grp);
+  });
+
+  sel.value = state.jobId;
+}
+
+function buildHairSelect() {
+  const sel = document.getElementById('sel-hair');
+  sel.innerHTML = hairsData.map(h =>
+    `<option value="${h.id}">${h.name || h.id}</option>`
+  ).join('');
+  sel.value = state.hairId;
+}
+
+function buildHairSwatches() {
+  const container = document.getElementById('hair-swatches');
+  container.innerHTML = HAIR_COLORS.map(c =>
+    `<div class="swatch ${c.suffix === state.hairColor ? 'active' : ''}"
+       style="background:${c.hex}"
+       data-suffix="${c.suffix}"
+       title="${c.label}"></div>`
+  ).join('');
+
+  container.addEventListener('click', e => {
+    const sw = e.target.closest('.swatch');
+    if (!sw) return;
+    state.hairColor = sw.dataset.suffix;
+    container.querySelectorAll('.swatch').forEach(s =>
+      s.classList.toggle('active', s.dataset.suffix === state.hairColor)
+    );
+    updateCharacter();
+    preloadCurrentSelection();
+  });
+}
+
+function buildDirButtons() {
+  const group = document.getElementById('dir-group');
+  group.innerHTML = DIRS.map((d, i) =>
+    `<input type="radio" name="dir" id="dir-${i}" value="${i}" class="radio-btn" ${i===state.dir?'checked':''}>
+     <label for="dir-${i}" class="radio-lbl" title="${d.label}">${d.short}</label>`
+  ).join('');
+
+  group.addEventListener('change', e => {
+    state.dir = parseInt(e.target.value);
+    updateCharacter();
+  });
+}
+
+function buildStepButtons() {
+  const container = document.getElementById('step-btns');
+  container.innerHTML = Array.from({length:8}, (_,i) =>
+    `<div class="step-btn ${i===state.step?'active':''}" data-step="${i}">${i}</div>`
+  ).join('');
+
+  container.addEventListener('click', e => {
+    const btn = e.target.closest('.step-btn');
+    if (!btn) return;
+    state.step = parseInt(btn.dataset.step);
+    container.querySelectorAll('.step-btn').forEach(b =>
+      b.classList.toggle('active', parseInt(b.dataset.step) === state.step)
+    );
+    updateClasses();
+    updateStatusBadge();
+  });
+}
+
+let allItems = { Upper:[], Mid:[], Lower:[], Robe:[] };
+
+function buildItemSelects(filterText = '') {
+  const ft = filterText.toLowerCase();
+
+  const filter = items => items.filter(it => {
+    if (!ft) return true;
+    return String(it.id).includes(ft) ||
+           (it.name && it.name.toLowerCase().includes(ft));
+  });
+
+  const makeOptions = (items, curVal) =>
+    `<option value="0">なし</option>` +
+    filter(items).map(it => {
+      const nm = it.name && !it.name.includes('�') ? it.name : `ID:${it.id}`;
+      return `<option value="${it.id}" ${it.id==curVal?'selected':''}>${it.id} - ${nm}</option>`;
+    }).join('');
+
+  document.getElementById('sel-upper').innerHTML = makeOptions(allItems.Upper, state.upper);
+  document.getElementById('sel-mid').innerHTML   = makeOptions(allItems.Mid,   state.mid);
+  document.getElementById('sel-lower').innerHTML = makeOptions(allItems.Lower, state.lower);
+  document.getElementById('sel-robe').innerHTML  = makeOptions(allItems.Robe,  state.robe);
+}
+
+function groupItems() {
+  allItems = { Upper:[], Mid:[], Lower:[], Robe:[] };
+  itemsData.forEach(it => {
+    const pos = it.position;
+    if (allItems[pos]) allItems[pos].push(it);
+  });
+}
+
+// ================================================================
+// プリロード
+// ================================================================
+async function preloadImages(urls) {
+  const toLoad = urls.filter(u => u && !preloadSet.has(u));
+  if (!toLoad.length) return;
+
+  showLoading(`画像プリロード中... (${toLoad.length}件)`);
+  let done = 0;
+  await Promise.allSettled(toLoad.map(url => new Promise(res => {
+    const img = new Image();
+    img.onload = img.onerror = () => {
+      preloadSet.add(url);
+      done++;
+      document.getElementById('loading-prog').textContent =
+        `${done} / ${toLoad.length}`;
+      res();
+    };
+    img.src = url;
+  })));
+  hideLoading();
+}
+
+async function preloadCurrentSelection() {
+  const urls = [];
+  Object.keys(ACTIONS).forEach(action => {
+    const folder = `${state.sex}${action}`;
+    const sfx = state.riding || '';
+    const col = state.color  || '';
+    urls.push(r2(`${folder}/${state.jobId}${sfx}${col}.${IMG_EXT}`));
+    urls.push(r2(`${folder}/${state.hairId}${state.hairColor}.${IMG_EXT}`));
+    if (state.upper) urls.push(r2(`${folder}/Item${state.upper}${state.jobId}${sfx}.${IMG_EXT}`));
+    if (state.mid)   urls.push(r2(`${folder}/Item${state.mid}${state.jobId}${sfx}.${IMG_EXT}`));
+    if (state.lower) urls.push(r2(`${folder}/Item${state.lower}${state.jobId}${sfx}.${IMG_EXT}`));
+    if (state.robe)  urls.push(r2(`${folder}/Item${state.robe}${state.jobId}${sfx}.${IMG_EXT}`));
+  });
+  await preloadImages(urls);
+}
+
+// ================================================================
+// ローディング表示
+// ================================================================
+function showLoading(msg) {
+  document.getElementById('loading').classList.add('show');
+  document.getElementById('loading-msg').textContent = msg;
+  document.getElementById('loading-prog').textContent = '';
+}
+function hideLoading() {
+  document.getElementById('loading').classList.remove('show');
+}
+
+// ================================================================
+// ズーム
+// ================================================================
+function setZoom(z) {
+  state.zoom = Math.max(1, Math.min(8, z));
+  charEl().style.transform = `scale(${state.zoom})`;
+  document.getElementById('zoom-label').textContent = `${state.zoom}x`;
+}
+
+// ================================================================
+// 背景
+// ================================================================
+function setBg(val) {
+  const area = document.getElementById('preview-area');
+  if (val === 'checker') {
+    area.style.background = 'repeating-conic-gradient(#e8ddd0 0% 25%,#f5ede2 0% 50%) 0 0/12px 12px';
+  } else {
+    area.style.background = val;
+  }
+  document.querySelectorAll('.bg-dot').forEach(b =>
+    b.classList.toggle('active', b.dataset.bg === val)
+  );
+}
+
+// ================================================================
+// アニメーション制御 (v4.css が CSS アニメーションを管理)
+// v4.css の animation-play-state を切り替える
+// ================================================================
+function setAnimPaused(paused) {
+  state.animating = !paused;
+  const el = charEl();
+  el.style.setProperty('--roAnimationPlayState', paused ? 'paused' : 'running');
+
+  // v4.css の ::before に animation-play-state を適用するためのスタイル
+  let styleEl = document.getElementById('anim-control-style');
+  if (!styleEl) {
+    styleEl = document.createElement('style');
+    styleEl.id = 'anim-control-style';
+    document.head.appendChild(styleEl);
+  }
+  styleEl.textContent = paused
+    ? `#char-el::before { animation-play-state: paused !important; }`
+    : '';
+
+  const btn = document.getElementById('btn-anim');
+  btn.textContent = paused ? '▶ 再生' : '⏸ 停止';
+  btn.classList.toggle('active', !paused);
+}
+
+// ================================================================
+// イベント配線
+// ================================================================
+function wireEvents() {
+
+  // 性別
+  document.querySelectorAll('input[name="sex"]').forEach(r => {
+    r.addEventListener('change', () => {
+      state.sex = r.value;
+      updateCharacter();
+      preloadCurrentSelection();
+    });
+  });
+
+  // Job
+  document.getElementById('sel-job').addEventListener('change', e => {
+    state.jobId  = e.target.value;
+    state.jobCls = 'ro' + e.target.value;
+    updateCharacter();
+    preloadCurrentSelection();
+  });
+
+  // カラー
+  document.getElementById('sel-color').addEventListener('change', e => {
+    state.color = e.target.value;
+    updateCharacter();
+  });
+
+  // 騎乗
+  document.querySelectorAll('input[name="riding"]').forEach(r => {
+    r.addEventListener('change', () => {
+      state.riding = r.value;
+      updateCharacter();
+      preloadCurrentSelection();
+    });
+  });
+
+  // モーション
+  document.querySelectorAll('input[name="action"]').forEach(r => {
+    r.addEventListener('change', () => {
+      state.action = r.value;
+      const isStand = state.action === 'Stand';
+      document.getElementById('stand-row').style.display = isStand ? '' : 'none';
+      updateCharacter();
+    });
+  });
+
+  // 髪型
+  document.getElementById('sel-hair').addEventListener('change', e => {
+    state.hairId = e.target.value;
+    updateCharacter();
+    preloadCurrentSelection();
+  });
+
+  // 装備選択
+  ['upper','mid','lower','robe'].forEach(slot => {
+    document.getElementById(`sel-${slot}`).addEventListener('change', e => {
+      state[slot] = parseInt(e.target.value) || 0;
+      updateCharacter();
+    });
+  });
+
+  // アイテム検索
+  let searchTimer;
+  document.getElementById('item-search').addEventListener('input', e => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => buildItemSelects(e.target.value), 250);
+  });
+
+  // アニメ制御 (再生中なら停止、停止中なら再生)
+  document.getElementById('btn-anim').addEventListener('click', () => {
+    setAnimPaused(state.animating);
+  });
+
+  // コマ送り (JS で step クラスを追加してアニメ停止状態でのプレビュー)
+  document.getElementById('btn-step-fwd').addEventListener('click', () => {
+    setAnimPaused(true);
+    const maxSteps = ACTIONS[state.action]?.steps || 8;
+    state.step = (state.step + 1) % maxSteps;
+
+    // Stand 用 step クラスを使い回す
+    const el = charEl();
+    // アニメ一時停止 + Step クラス追加
+    let styleEl = document.getElementById('anim-control-style');
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = 'anim-control-style';
+      document.head.appendChild(styleEl);
+    }
+    styleEl.textContent =
+      `#char-el::before { animation-play-state: paused !important; animation-delay: -${state.step * 60}ms !important; }`;
+  });
+
+  // ズーム
+  document.getElementById('btn-zoom-in').addEventListener('click',  () => setZoom(state.zoom + 1));
+  document.getElementById('btn-zoom-out').addEventListener('click', () => setZoom(state.zoom - 1));
+  // マウスホイールズーム
+  document.getElementById('preview-area').addEventListener('wheel', e => {
+    e.preventDefault();
+    setZoom(state.zoom + (e.deltaY < 0 ? 1 : -1));
+  }, {passive: false});
+
+  // 背景
+  document.querySelectorAll('.bg-dot').forEach(b => {
+    b.addEventListener('click', () => setBg(b.dataset.bg));
+  });
+
+  // 設定適用
+  document.getElementById('btn-apply').addEventListener('click', async () => {
+    const url = document.getElementById('cfg-r2url').value.trim();
+    if (url) {
+      state.r2url = url;
+      localStorage.setItem('ro_r2url', url);
+    }
+    loadV4css();
+    await loadIdJson();
+    groupItems();
+    buildJobSelect();
+    buildHairSelect();
+    buildItemSelects();
+    updateCharacter();
+  });
+
+  // デバッグ
+  document.getElementById('btn-debug').addEventListener('click', () => {
+    state.debugVisible = !state.debugVisible;
+    const panel = document.getElementById('debug-panel');
+    panel.classList.toggle('show', state.debugVisible);
+    document.getElementById('btn-debug').classList.toggle('active', state.debugVisible);
+    if (state.debugVisible) updateDebug();
+  });
+
+  // プリロード
+  document.getElementById('btn-preload').addEventListener('click', preloadCurrentSelection);
+
+  // ドラッグでキャラ移動 (CSS translate を使用)
+  let drag = null, txOff = 0, tyOff = 0;
+  const vp = document.getElementById('char-viewport');
+  vp.addEventListener('mousedown', e => {
+    e.preventDefault();
+    drag = {startX: e.clientX, startY: e.clientY, startTX: txOff, startTY: tyOff};
+  });
+  document.addEventListener('mousemove', e => {
+    if (!drag) return;
+    txOff = drag.startTX + (e.clientX - drag.startX);
+    tyOff = drag.startTY + (e.clientY - drag.startY);
+    vp.style.translate = `${txOff}px ${tyOff}px`;
+  });
+  document.addEventListener('mouseup', () => drag = null);
+  // ダブルクリックでリセット
+  vp.addEventListener('dblclick', () => {
+    txOff = tyOff = 0;
+    vp.style.translate = '0px 0px';
+  });
+}
+
+// ================================================================
+// 初期化
+// ================================================================
+async function init() {
+  // localStorage から R2 URL 復元
+  const savedUrl = localStorage.getItem('ro_r2url');
+  if (savedUrl) {
+    state.r2url = savedUrl;
+    document.getElementById('cfg-r2url').value = savedUrl;
+  } else {
+    document.getElementById('cfg-r2url').value = R2_BASE_URL_DEFAULT;
+  }
+
+  // UI 構築
+  buildDirButtons();
+  buildStepButtons();
+
+  // v4.css ロード (CSS アニメーション + オフセット)
+  loadV4css();
+
+  // id.json 読み込み
+  await loadIdJson();
+  groupItems();
+  buildJobSelect();
+  buildHairSelect();
+  buildHairSwatches();
+  buildItemSelects();
+
+  // イベント配線
+  wireEvents();
+
+  // 初期ズーム
+  setZoom(2);
+
+  // アニメ開始
+  setAnimPaused(false);
+
+  // 初期キャラ描画
+  updateCharacter();
+
+  // 初期プリロード (バックグラウンド)
+  preloadCurrentSelection().catch(() => {});
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

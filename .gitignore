@@ -1,0 +1,12 @@
+# R2 アップロード用画像（ローカルのみ保持）
+romaterial/
+
+# .spr/.act 変換用ソースファイル（ローカルのみ保持）
+assets/
+
+# Python
+__pycache__/
+*.pyc
+
+# 開発ログ
+dev_log.txt
