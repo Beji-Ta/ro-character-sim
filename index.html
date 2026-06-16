@@ -461,6 +461,18 @@ input[type=number]:focus{border-color:var(--accent)}
       </div>
     </div>
 
+    <!-- その他 -->
+    <div class="section">
+      <div class="section-title">その他</div>
+      <div class="row">
+        <span class="lbl">外見</span>
+        <div class="radio-group" id="costume1-group">
+          <input type="checkbox" id="chk-costume1" class="radio-btn">
+          <label for="chk-costume1" class="radio-lbl">セカンドコスチューム</label>
+        </div>
+      </div>
+    </div>
+
     <!-- モーション・向き -->
     <div class="section">
       <div class="section-title">モーション・向き</div>
@@ -662,6 +674,7 @@ const state = {
   jobCls: 'roNovice',
   color: '',
   riding: '',
+  costume1: false,
   action: 'Wait',
   dir: 0,
   step: 0,
@@ -680,6 +693,7 @@ let jobsData       = [];
 let hairsData      = [];
 let itemsData      = [];
 let genericItemIds = new Set();
+let costume1JobIds = new Set();
 let preloadSet     = new Set();
 let cssLoaded      = false;
 
@@ -695,10 +709,11 @@ function imgUrl(folder, filename) {
 }
 
 function bodyUrl(action) {
-  const folder = `${state.sex}${action}`;
-  const suffix = state.riding ? state.riding : '';
-  const color  = state.color  ? state.color  : '';
-  return imgUrl(folder, `${state.jobId}${suffix}${color}.${IMG_EXT}`);
+  const folder  = `${state.sex}${action}`;
+  const suffix  = state.riding ? state.riding : '';
+  const costume = (state.costume1 && costume1JobIds.has(state.jobId)) ? 'Costume1' : '';
+  const color   = state.color  ? state.color  : '';
+  return imgUrl(folder, `${state.jobId}${suffix}${costume}${color}.${IMG_EXT}`);
 }
 
 function hairUrl(action) {
@@ -780,6 +795,9 @@ function updateClasses() {
 
   // 乗り物 (騎乗クラスは v4.css に .roRiding がある)
   if (state.riding) classes.push('roRiding');
+
+  // セカンドコスチューム (頭装備オフセット調整用クラス)
+  if (state.costume1 && costume1JobIds.has(state.jobId)) classes.push('roCostume1');
 
   el.className = classes.join(' ');
 }
@@ -925,6 +943,14 @@ async function loadIdJson() {
     hairsData = FALLBACK_HAIRS;
     itemsData = [];
   }
+
+  // セカンドコスチューム(roCostume1)を持つジョブ一覧を offsets から抽出
+  costume1JobIds = new Set(
+    jobsData
+      .filter(j => (j.offsets || []).some(o => o.isCostume1))
+      .map(j => j.id)
+  );
+
   hideLoading();
 }
 
@@ -1042,6 +1068,17 @@ function buildJobSelect() {
   });
 
   sel.value = state.jobId;
+}
+
+// 選択中ジョブがセカンドコスチュームを持たない場合はチェックボックスを無効化
+function refreshCostume1Checkbox() {
+  const chk = document.getElementById('chk-costume1');
+  const available = costume1JobIds.has(state.jobId);
+  chk.disabled = !available;
+  if (!available) {
+    chk.checked   = false;
+    state.costume1 = false;
+  }
 }
 
 function buildHairSelect() {
@@ -1254,6 +1291,14 @@ function wireEvents() {
   document.getElementById('sel-job').addEventListener('change', e => {
     state.jobId  = e.target.value;
     state.jobCls = 'ro' + e.target.value;
+    refreshCostume1Checkbox();
+    updateCharacter();
+    preloadCurrentSelection();
+  });
+
+  // セカンドコスチューム
+  document.getElementById('chk-costume1').addEventListener('change', e => {
+    state.costume1 = e.target.checked;
     updateCharacter();
     preloadCurrentSelection();
   });
@@ -1355,6 +1400,7 @@ function wireEvents() {
     await loadGenericItems();
     groupItems();
     buildJobSelect();
+    refreshCostume1Checkbox();
     buildHairSelect();
     buildItemSelects();
     updateCharacter();
@@ -1418,6 +1464,7 @@ async function init() {
   await loadGenericItems();
   groupItems();
   buildJobSelect();
+  refreshCostume1Checkbox();
   buildHairSelect();
   buildHairSwatches();
   buildItemSelects();
