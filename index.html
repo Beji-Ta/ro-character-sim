@@ -479,13 +479,13 @@ input[type=number]:focus{border-color:var(--accent)}
       <div class="row">
         <span class="lbl">モーション</span>
         <div class="radio-group" id="action-group">
-          <input type="radio" name="action" id="act-wait" value="Wait" class="radio-btn" checked>
+          <input type="radio" name="action" id="act-wait" value="Wait" class="radio-btn">
           <label for="act-wait" class="radio-lbl">待機</label>
           <input type="radio" name="action" id="act-walk" value="Walk" class="radio-btn">
           <label for="act-walk" class="radio-lbl">歩く</label>
           <input type="radio" name="action" id="act-sit" value="Sit" class="radio-btn">
           <label for="act-sit" class="radio-lbl">座る</label>
-          <input type="radio" name="action" id="act-stand" value="Stand" class="radio-btn">
+          <input type="radio" name="action" id="act-stand" value="Stand" class="radio-btn" checked>
           <label for="act-stand" class="radio-lbl">立ち</label>
           <input type="radio" name="action" id="act-take" value="Take" class="radio-btn">
           <label for="act-take" class="radio-lbl">拾う</label>
@@ -496,7 +496,7 @@ input[type=number]:focus{border-color:var(--accent)}
         <div class="radio-group" id="dir-group"></div>
       </div>
       <!-- Stand 用コマ選択 -->
-      <div id="stand-row" class="row" style="display:none">
+      <div id="stand-row" class="row">
         <span class="lbl">コマ</span>
         <div class="step-btns" id="step-btns"></div>
       </div>
@@ -675,7 +675,7 @@ const state = {
   color: '',
   riding: '',
   costume1: false,
-  action: 'Wait',
+  action: 'Stand',
   dir: 0,
   step: 0,
   hairId: 'Hair1',
